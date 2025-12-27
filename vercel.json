@@ -2,13 +2,15 @@
       "builds": [
         {
           "src": "main.py",
-          "use": "@vercel/python"
+          "use": "@vercel/python",
+          "config": {
+            "includeFiles": ["knowledge_base.json"]
+          }
         }
       ],
       "routes": [
         {
-          "src":
-     "/(.*)",
+          "src": "/(.*)",
           "dest": "main.py"
         }
       ]
