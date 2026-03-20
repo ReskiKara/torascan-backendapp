@@ -71,7 +71,7 @@ Ketentuan:
             {"role": "user", "content": prompt}
         ],
         "model": "llama-3.1-8b-instant",
-        "max_tokens": 150
+        "max_tokens": 500
     }
 
     # ======================
