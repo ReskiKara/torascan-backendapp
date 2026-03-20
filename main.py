@@ -5,24 +5,32 @@ import httpx
 
 app = FastAPI()
 
-# Load database JSON
+# ======================
+# LOAD DATABASE JSON
+# ======================
 try:
     with open("knowledge_base.json", "r", encoding="utf-8") as f:
         knowledge_base = json.load(f)
 except FileNotFoundError:
     knowledge_base = {}
 
-# Ambil API Key dari Vercel
+# ======================
+# API CONFIG
+# ======================
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 
+# ======================
+# ENDPOINT
+# ======================
 @app.get("/get-info")
 async def get_artifact_info(artefak: str):
+
     # ======================
     # 1. RETRIEVAL
     # ======================
-    context = knowledge_base.get(artefak)
+    context = knowledge_base.get(artefak.lower())
 
     if not context:
         raise HTTPException(
@@ -37,7 +45,7 @@ async def get_artifact_info(artefak: str):
         )
 
     # ======================
-    # 2. AUGMENTATION (PROMPT)
+    # 2. PROMPT
     # ======================
     prompt = f"""
 Berdasarkan konteks berikut:
@@ -63,11 +71,11 @@ Ketentuan:
             {"role": "user", "content": prompt}
         ],
         "model": "llama-3.1-8b-instant",
-        "max_tokens": 150  # 🔥 WAJIB biar cepat
+        "max_tokens": 150
     }
 
     # ======================
-    # 3. GENERATION (CALL API)
+    # 3. CALL GROQ API
     # ======================
     async with httpx.AsyncClient() as client:
         try:
@@ -77,6 +85,26 @@ Ketentuan:
                 headers=headers,
                 timeout=30.0
             )
+
             response.raise_for_status()
 
-            groq_response
+            groq_response = response.json()
+
+            if "choices" not in groq_response:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Response tidak valid: {groq_response}"
+                )
+
+            llm_content = groq_response["choices"][0]["message"]["content"]
+
+            return {
+                "artifact_name": artefak,
+                "description": llm_content
+            }
+
+        except Exception as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Terjadi error saat memproses respons dari Groq: {e}"
+            )
