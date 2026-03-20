@@ -5,7 +5,7 @@
           "config": {
             "includeFiles": ["knowledge_base.json"]
           }
-        },
+        }
       "routes": [
         {
           "src": "/(.*)",
