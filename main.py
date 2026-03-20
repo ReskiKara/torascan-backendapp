@@ -51,7 +51,7 @@ async def get_artifact_info(artefak: str):
 Berdasarkan konteks berikut:
 {context}
 
-Jelaskan artefak {artefak} dalam 2 paragraf singkat.
+Jelaskan artefak {artefak}  secara informatif dan menarik dalam bentuk paragraf.
 
 Ketentuan:
 - Artefak berasal dari Toraja
