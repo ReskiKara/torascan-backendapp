@@ -28,8 +28,7 @@ async def get_artifact_info(artefak: str):
          raise HTTPException(status_code=500, detail="Kunci API Groq belum diatur di server Vercel.")
 
     # Tahap 2: Augmentation (Membuat Prompt yang Diperkaya)
-  prompt = f"Berdasarkan konteks berikut:'{context}'. \
-Jelaskan secara menarik dan informatif dalam format paragraf apa itu {artefak} khas toraja."
+      prompt = f"Berdasarkan konteks berikut: '{context}'. Jelaskan secara menarik dan informatif dalam format paragraf apa itu {artefak}."
 
     headers = {
         "Authorization": f"Bearer {GROQ_API_KEY}",
