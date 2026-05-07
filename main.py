@@ -84,8 +84,9 @@ def get_vector_db():
             # =========================
             # VECTOR DATABASE
             # =========================
-            vector_db = FAISS.from_documents(
-                chunks,
+            texts = [doc.page_content for doc in chunks]
+            vector_db = FAISS.from_texts(
+                texts,
                 embeddings
             )
 
