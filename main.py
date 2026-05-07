@@ -47,9 +47,11 @@ llm = ChatGroq(
 vector_db = None
 
 def get_vector_db():
+
     global vector_db
 
     if vector_db is None:
+
         try:
 
             pdf_path = "artefak_toraja.pdf"
@@ -65,6 +67,7 @@ def get_vector_db():
             # LOAD PDF
             # =========================
             loader = PyPDFLoader(pdf_path)
+
             data = loader.load()
 
             print(f"PDF Loaded: {len(data)} pages")
@@ -82,12 +85,29 @@ def get_vector_db():
             print(f"Chunks Created: {len(chunks)}")
 
             # =========================
-            # VECTOR DATABASE
+            # TEXT EXTRACTION
             # =========================
             texts = [doc.page_content for doc in chunks]
-            vector_db = FAISS.from_texts(
-                texts,
-                embeddings
+
+            # =========================
+            # MANUAL EMBEDDING
+            # =========================
+            all_embeddings = []
+
+            for text in texts:
+
+                emb = embeddings.embed_query(text)
+
+                all_embeddings.append(emb)
+
+            print(f"Embeddings Created: {len(all_embeddings)}")
+
+            # =========================
+            # FAISS VECTOR DB
+            # =========================
+            vector_db = FAISS.from_embeddings(
+                text_embeddings=list(zip(texts, all_embeddings)),
+                embedding=embeddings
             )
 
             print("RAG System Initialized Successfully")
