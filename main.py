@@ -15,7 +15,7 @@ GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
 
 # Inisialisasi Model secara global
 embeddings = GoogleGenerativeAIEmbeddings(
-    model="models/text-embedding-004", 
+    model="text-embedding-004", 
     google_api_key=GOOGLE_API_KEY
 )
 llm = ChatGroq(
