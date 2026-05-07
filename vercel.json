@@ -4,7 +4,9 @@
       "src": "main.py",
       "use": "@vercel/python",
       "config": {
-        "includeFiles": ["artefak_toraja.pdf"]
+        "includeFiles": [
+          "artefak_toraja.pdf"
+        ]
       }
     }
   ],
@@ -13,11 +15,5 @@
       "src": "/(.*)",
       "dest": "main.py"
     }
-  ],
-  "functions": {
-    "main.py": {
-      "maxDuration": 60,
-      "memory": 1024
-    }
-  }
+  ]
 }
