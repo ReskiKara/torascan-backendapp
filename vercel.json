@@ -1,18 +1,23 @@
+{
+  "builds": [
     {
-       "builds":[
-        {
-          "src": "main.py",
-          "use": "@vercel/python",
-          "config": {
-            "includeFiles": ["knowledge_base.json"]
-          }
-        }
-       ],
-      "routes": [
-        {
-          "src": "/(.*)",
-          "dest": "main.py"
-        }
-      ]
+      "src": "main.py",
+      "use": "@vercel/python",
+      "config": {
+        "includeFiles": ["artefak_toraja.pdf"]
+      }
     }
-    
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "main.py"
+    }
+  ],
+  "functions": {
+    "main.py": {
+      "maxDuration": 60,
+      "memory": 1024
+    }
+  }
+}
