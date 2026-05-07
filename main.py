@@ -28,7 +28,7 @@ if not GOOGLE_API_KEY:
 # EMBEDDING MODEL
 # =========================
 embeddings = GoogleGenerativeAIEmbeddings(
-    model="models/text-embedding-004",
+    model="gemini-embedding-2",
     google_api_key=GOOGLE_API_KEY
 )
 
