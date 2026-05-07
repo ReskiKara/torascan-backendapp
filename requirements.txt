@@ -1,3 +1,8 @@
 fastapi
 uvicorn
-httpx
+langchain
+langchain-community
+langchain-google-genai
+langchain-groq
+faiss-cpu
+pypdf
