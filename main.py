@@ -1,3 +1,4 @@
+print("VERSI RAG PDF TERBARU")
 import os
 from fastapi import FastAPI, HTTPException
 from langchain_community.document_loaders import PyPDFLoader
