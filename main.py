@@ -35,6 +35,8 @@ def get_vector_db():
             print("CURRENT DIR:", os.getcwd())
             print("PDF EXISTS:", os.path.exists(pdf_path))
             print("PDF PATH:", pdf_path)
+            if not os.path.exists(pdf_path):
+                return None
             loader = PyPDFLoader(pdf_path)
             data = loader.load()
             
