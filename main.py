@@ -30,10 +30,11 @@ def get_vector_db():
     global vector_db
     if vector_db is None:
         try:
-            pdf_path = os.path.join(os.path.dirname(__file__), "artefak_toraja.pdf")
-            if not os.path.exists(pdf_path):
-                return None
-            
+            pdf_path ="artefak_toraja.pdf"
+        
+            print("CURRENT DIR:", os.getcwd())
+            print("PDF EXISTS:", os.path.exists(pdf_path))
+            print("PDF PATH:", pdf_path)
             loader = PyPDFLoader(pdf_path)
             data = loader.load()
             
