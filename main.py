@@ -28,27 +28,37 @@ vector_db = None
 
 def get_vector_db():
     global vector_db
+
     if vector_db is None:
         try:
-            pdf_path ="artefak_toraja.pdf"
-        
+            pdf_path = "artefak_toraja.pdf"
+
             print("CURRENT DIR:", os.getcwd())
-            print("PDF EXISTS:", os.path.exists(pdf_path))
+            print("FILES:", os.listdir())
             print("PDF PATH:", pdf_path)
+            print("PDF EXISTS:", os.path.exists(pdf_path))
+
             if not os.path.exists(pdf_path):
                 return None
+
             loader = PyPDFLoader(pdf_path)
             data = loader.load()
-            
-            # Gunakan penamaan yang baru sesuai library terbaru
-            text_splitter = RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=100)
+
+            text_splitter = RecursiveCharacterTextSplitter(
+                chunk_size=800,
+                chunk_overlap=100
+            )
+
             chunks = text_splitter.split_documents(data)
-            
+
             vector_db = FAISS.from_documents(chunks, embeddings)
+
             print("RAG System Initialized Successfully")
+
         except Exception as e:
             print(f"Error initializing RAG: {e}")
             return None
+
     return vector_db
 
 @app.get("/get-info")
