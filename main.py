@@ -1,26 +1,35 @@
 import os
 from fastapi import FastAPI, HTTPException
+
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain_groq import ChatGroq
 
+# =========================
+# FASTAPI
+# =========================
 app = FastAPI()
 
 # =========================
 # ENVIRONMENT VARIABLES
 # =========================
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
 
 if not GROQ_API_KEY:
     raise Exception("GROQ_API_KEY tidak ditemukan")
 
+if not GOOGLE_API_KEY:
+    raise Exception("GOOGLE_API_KEY tidak ditemukan")
+
 # =========================
 # EMBEDDING MODEL
 # =========================
-embeddings = HuggingFaceEmbeddings(
-    model_name="sentence-transformers/all-MiniLM-L6-v2"
+embeddings = GoogleGenerativeAIEmbeddings(
+    model="models/embedding-001",
+    google_api_key=GOOGLE_API_KEY
 )
 
 # =========================
@@ -42,23 +51,27 @@ def get_vector_db():
 
     if vector_db is None:
         try:
+
             pdf_path = "artefak_toraja.pdf"
 
             print("CURRENT DIR:", os.getcwd())
             print("FILES:", os.listdir())
-            print("PDF PATH:", pdf_path)
             print("PDF EXISTS:", os.path.exists(pdf_path))
 
             if not os.path.exists(pdf_path):
                 raise Exception("File PDF tidak ditemukan")
 
+            # =========================
             # LOAD PDF
+            # =========================
             loader = PyPDFLoader(pdf_path)
             data = loader.load()
 
             print(f"PDF Loaded: {len(data)} pages")
 
+            # =========================
             # CHUNKING
+            # =========================
             text_splitter = RecursiveCharacterTextSplitter(
                 chunk_size=800,
                 chunk_overlap=100
@@ -68,13 +81,20 @@ def get_vector_db():
 
             print(f"Chunks Created: {len(chunks)}")
 
+            # =========================
             # VECTOR DATABASE
-            vector_db = FAISS.from_documents(chunks, embeddings)
+            # =========================
+            vector_db = FAISS.from_documents(
+                chunks,
+                embeddings
+            )
 
             print("RAG System Initialized Successfully")
 
         except Exception as e:
-            print(f"Error initializing RAG: {e}")
+
+            print(f"RAG ERROR: {e}")
+
             raise HTTPException(
                 status_code=500,
                 detail=f"RAG ERROR: {str(e)}"
@@ -117,13 +137,21 @@ async def process_rag(user_query: str, artifact_name: str, lang: str):
 
     db = get_vector_db()
 
+    # =========================
     # SIMILARITY SEARCH
+    # =========================
     docs = db.similarity_search(user_query, k=3)
 
+    # =========================
     # CONTEXT
-    context = "\n".join([doc.page_content for doc in docs])
+    # =========================
+    context = "\n".join([
+        doc.page_content for doc in docs
+    ])
 
+    # =========================
     # PROMPT
+    # =========================
     if lang.lower() == "en":
 
         system_msg = (
