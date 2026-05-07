@@ -6,3 +6,4 @@ langchain-google-genai
 langchain-groq
 faiss-cpu
 pypdf
+tiktoken
