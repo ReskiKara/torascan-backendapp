@@ -378,7 +378,7 @@ ATURAN:
 - Anda boleh memperluas penjelasan secara ringan
   agar lebih natural dan informatif.
 - Gunakan bahasa Indonesia formal.
-- Jawaban maksimal 3 paragraf.
+- Jawaban maksimal 2 paragraf.
 """
 
     try:
