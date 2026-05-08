@@ -76,7 +76,7 @@ VALID_ARTEFACTS = {
 }
 
 # =========================
-# VECTOR DB
+# LOAD VECTOR DATABASE
 # =========================
 def get_vector_db():
 
@@ -135,7 +135,7 @@ def get_vector_db():
             print(f"Embeddings Created: {len(all_embeddings)}")
 
             # =========================
-            # FAISS VECTOR DATABASE
+            # CREATE FAISS DATABASE
             # =========================
             vector_db = FAISS.from_embeddings(
                 text_embeddings=list(zip(texts, all_embeddings)),
@@ -175,9 +175,11 @@ async def get_info(artefak: str, lang: str = "id"):
             "description": "Artefak tidak ditemukan dalam basis pengetahuan."
         }
 
-    query = clean_name
-
-    return await process_rag(query, clean_name, lang)
+    return await process_rag(
+        user_query=clean_name,
+        artifact_name=clean_name,
+        lang=lang
+    )
 
 # =========================
 # CHAT ENDPOINT
@@ -199,9 +201,11 @@ async def chat(query: str, artefak: str, lang: str = "id"):
             "description": "Artefak tidak ditemukan dalam basis pengetahuan."
         }
 
-    full_query = f"{clean_name}: {query}"
-
-    return await process_rag(full_query, clean_name, lang)
+    return await process_rag(
+        user_query=query,
+        artifact_name=clean_name,
+        lang=lang
+    )
 
 # =========================
 # RAG PROCESS
@@ -211,9 +215,13 @@ async def process_rag(user_query: str, artifact_name: str, lang: str):
     db = get_vector_db()
 
     # =========================
-    # SIMILARITY SEARCH
+    # RETRIEVAL BERDASARKAN
+    # NAMA ARTEFAK
     # =========================
-    docs = db.similarity_search(user_query, k=1)
+    docs = db.similarity_search(
+        artifact_name,
+        k=1
+    )
 
     # =========================
     # CONTEXT
@@ -221,6 +229,9 @@ async def process_rag(user_query: str, artifact_name: str, lang: str):
     context = "\n".join([
         doc.page_content for doc in docs
     ])
+
+    print("RETRIEVED CONTEXT:")
+    print(context)
 
     # =========================
     # PROMPT
