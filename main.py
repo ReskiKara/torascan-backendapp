@@ -36,7 +36,7 @@ embeddings = GoogleGenerativeAIEmbeddings(
 # LLM MODEL
 # =========================
 llm = ChatGroq(
-    temperature=0.3,
+    temperature=0.2,
     model_name="llama-3.1-8b-instant",
     groq_api_key=GROQ_API_KEY
 )
@@ -77,7 +77,7 @@ def get_vector_db():
             # =========================
             text_splitter = RecursiveCharacterTextSplitter(
                 chunk_size=300,
-                chunk_overlap=80
+                chunk_overlap=50
             )
 
             chunks = text_splitter.split_documents(data)
@@ -103,7 +103,7 @@ def get_vector_db():
             print(f"Embeddings Created: {len(all_embeddings)}")
 
             # =========================
-            # FAISS VECTOR DB
+            # FAISS VECTOR DATABASE
             # =========================
             vector_db = FAISS.from_embeddings(
                 text_embeddings=list(zip(texts, all_embeddings)),
@@ -133,7 +133,7 @@ async def get_info(artefak: str, lang: str = "id"):
 
     clean_name = artefak.replace("_", " ")
 
-    query = f"Jelaskan secara mendalam tentang artefak {clean_name}"
+    query = clean_name
 
     return await process_rag(query, clean_name, lang)
 
@@ -147,7 +147,7 @@ async def chat(query: str, artefak: str, lang: str = "id"):
 
     clean_name = artefak.replace("_", " ")
 
-    full_query = f"Pertanyaan user tentang {clean_name}: {query}"
+    full_query = f"{clean_name} : {query}"
 
     return await process_rag(full_query, clean_name, lang)
 
@@ -175,10 +175,19 @@ async def process_rag(user_query: str, artifact_name: str, lang: str):
     # =========================
     if lang.lower() == "en":
 
-        system_msg = (
-            "You are a Toraja cultural expert. "
-            "Answer only based on the provided context."
-        )
+        system_msg = """
+You are a Toraja cultural information system.
+
+RULES:
+- Answer only based on retrieval context.
+- Do not add outside information.
+- Do not mix other artifacts.
+- If information is unavailable,
+  answer:
+  'Information not found in knowledge base.'
+- Maximum 2 paragraphs.
+- Use concise and formal language.
+"""
 
         prompt = f"""
 Context:
@@ -190,12 +199,12 @@ Artifact:
 Question:
 {user_query}
 
-Answer in professional English.
+Give a concise explanation in maximum 2 paragraphs.
 """
 
     else:
 
-       system_msg = """
+        system_msg = """
 Anda adalah sistem informasi artefak budaya Toraja.
 
 ATURAN:
@@ -219,7 +228,7 @@ Artefak:
 Pertanyaan:
 {user_query}
 
-Jawab dalam Bahasa Indonesia formal.
+Berikan penjelasan singkat maksimal 2 paragraf.
 """
 
     try:
