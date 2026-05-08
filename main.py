@@ -1,8 +1,10 @@
 import os
+import re
+
 from fastapi import FastAPI, HTTPException
 
+from langchain_core.documents import Document
 from langchain_community.document_loaders import PyPDFLoader
-from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain_groq import ChatGroq
@@ -105,16 +107,34 @@ def get_vector_db():
             print(f"PDF Loaded: {len(data)} pages")
 
             # =========================
-            # CHUNKING
+            # STRUCTURED CHUNKING
             # =========================
-            text_splitter = RecursiveCharacterTextSplitter(
-                chunk_size=300,
-                chunk_overlap=50
+            full_text = "\n".join([
+                doc.page_content for doc in data
+            ])
+
+            # Split berdasarkan struktur artefak
+            sections = re.split(
+                r'(?=\d+\.\s[A-Z\'\-\(\) ]+)',
+                full_text
             )
 
-            chunks = text_splitter.split_documents(data)
+            chunks = []
 
-            print(f"Chunks Created: {len(chunks)}")
+            for section in sections:
+
+                section = section.strip()
+
+                # Hindari chunk kosong
+                if len(section) > 50:
+
+                    chunks.append(
+                        Document(
+                            page_content=section
+                        )
+                    )
+
+            print(f"Artefact Chunks Created: {len(chunks)}")
 
             # =========================
             # TEXT EXTRACTION
@@ -219,34 +239,13 @@ async def process_rag(user_query: str, artifact_name: str, lang: str):
     # =========================
     docs = db.similarity_search(
         artifact_name,
-        k=5
+        k=1
     )
 
     # =========================
-    # FILTER RELEVANT CHUNKS
+    # CONTEXT
     # =========================
-    relevant_chunks = []
-
-    for doc in docs:
-
-        first_part = doc.page_content.lower()[:150]
-
-        if artifact_name.lower() in first_part:
-
-            relevant_chunks.append(
-                doc.page_content
-            )
-
-    # =========================
-    # FALLBACK
-    # =========================
-    if not relevant_chunks:
-
-        context = docs[0].page_content
-
-    else:
-
-        context = "\n".join(relevant_chunks)
+    context = docs[0].page_content
 
     print("RETRIEVED CONTEXT:")
     print(context)
@@ -271,22 +270,16 @@ RULES:
 """
 
         prompt = f"""
-ANSWER CONTRACT:
-
-1. Artifact Name:
-{artifact_name}
-
-2. Use ONLY this context:
+Context:
 {context}
 
-TASK:
-Explain the artifact {artifact_name}.
+Artifact:
+{artifact_name}
 
-If the context discusses other artifacts,
-IGNORE them and only use information
-relevant to {artifact_name}.
+Question:
+{user_query}
 
-Answer in concise professional English.
+Explain the artifact in maximum 2 paragraphs.
 """
 
     else:
@@ -306,22 +299,16 @@ ATURAN:
 """
 
         prompt = f"""
-KONTRAK JAWABAN:
-
-1. Nama artefak yang harus dijelaskan:
-{artifact_name}
-
-2. Gunakan HANYA konteks berikut:
+Konteks:
 {context}
 
-TUGAS:
-Jelaskan artefak {artifact_name}.
+Artefak:
+{artifact_name}
 
-Jika konteks membahas artefak lain,
-ABAIKAN dan gunakan hanya informasi
-yang relevan dengan {artifact_name}.
+Pertanyaan:
+{user_query}
 
-Jawaban maksimal 2 paragraf.
+Jelaskan artefak tersebut maksimal 2 paragraf.
 """
 
     try:
