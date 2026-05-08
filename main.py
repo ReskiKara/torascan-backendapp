@@ -107,36 +107,59 @@ def get_vector_db():
             print(f"PDF Loaded: {len(data)} pages")
 
             # =========================
-            # GABUNGKAN SEMUA TEKS
+            # GABUNGKAN TEKS PDF
             # =========================
             full_text = "\n".join([
-                doc.page_content for doc in data
+                doc.page_content
+                for doc in data
             ])
 
             # =========================
             # STRUCTURED CHUNKING
-            # SPLIT BERDASARKAN NOMOR ARTEFAK
+            # BERDASARKAN NAMA ARTEFAK
             # =========================
-            sections = re.split(
-                r'\n\s*\d+\.\s',
-                full_text
-            )
-
             chunks = []
 
-            for i, section in enumerate(sections):
+            artefact_list = list(VALID_ARTEFACTS)
 
-                section = section.strip()
+            for artefact in artefact_list:
 
-                # Hindari chunk kosong
+                start_idx = full_text.lower().find(
+                    artefact.lower()
+                )
+
+                if start_idx == -1:
+                    continue
+
+                # Cari artefak berikutnya
+                end_idx = len(full_text)
+
+                for next_artefact in artefact_list:
+
+                    if next_artefact == artefact:
+                        continue
+
+                    next_idx = full_text.lower().find(
+                        next_artefact.lower(),
+                        start_idx + 1
+                    )
+
+                    if next_idx != -1 and next_idx < end_idx:
+                        end_idx = next_idx
+
+                section = full_text[start_idx:end_idx].strip()
+
                 if len(section) > 50:
 
-                    print(f"\n===== CHUNK {i} =====")
+                    print(f"\n===== {artefact.upper()} =====")
                     print(section[:500])
 
                     chunks.append(
                         Document(
-                            page_content=section
+                            page_content=section,
+                            metadata={
+                                "artifact": artefact.lower()
+                            }
                         )
                     )
 
@@ -168,7 +191,11 @@ def get_vector_db():
             # =========================
             vector_db = FAISS.from_embeddings(
                 text_embeddings=list(zip(texts, all_embeddings)),
-                embedding=embeddings
+                embedding=embeddings,
+                metadatas=[
+                    doc.metadata
+                    for doc in chunks
+                ]
             )
 
             print("RAG System Initialized Successfully")
@@ -194,9 +221,6 @@ async def get_info(artefak: str, lang: str = "id"):
 
     clean_name = artefak.lower().replace("_", " ").strip()
 
-    # =========================
-    # VALIDASI ARTEFAK
-    # =========================
     if clean_name not in VALID_ARTEFACTS:
 
         return {
@@ -220,9 +244,6 @@ async def chat(query: str, artefak: str, lang: str = "id"):
 
     clean_name = artefak.lower().replace("_", " ").strip()
 
-    # =========================
-    # VALIDASI ARTEFAK
-    # =========================
     if clean_name not in VALID_ARTEFACTS:
 
         return {
@@ -248,13 +269,35 @@ async def process_rag(user_query: str, artifact_name: str, lang: str):
     # =========================
     docs = db.similarity_search(
         artifact_name,
-        k=1
+        k=10
     )
+
+    # =========================
+    # FILTER BERDASARKAN METADATA
+    # =========================
+    filtered_docs = []
+
+    for doc in docs:
+
+        metadata_artifact = doc.metadata.get(
+            "artifact",
+            ""
+        ).lower()
+
+        if metadata_artifact == artifact_name.lower():
+
+            filtered_docs.append(doc)
 
     # =========================
     # CONTEXT
     # =========================
-    context = docs[0].page_content
+    if filtered_docs:
+
+        context = filtered_docs[0].page_content
+
+    else:
+
+        context = docs[0].page_content
 
     print("\n===== RETRIEVED CONTEXT =====")
     print(context)
