@@ -36,7 +36,7 @@ embeddings = GoogleGenerativeAIEmbeddings(
 # LLM MODEL
 # =========================
 llm = ChatGroq(
-    temperature=0.2,
+    temperature=0.3,
     model_name="llama-3.1-8b-instant",
     groq_api_key=GROQ_API_KEY
 )
@@ -161,7 +161,7 @@ async def process_rag(user_query: str, artifact_name: str, lang: str):
     # =========================
     # SIMILARITY SEARCH
     # =========================
-    docs = db.similarity_search(user_query, k=3)
+    docs = db.similarity_search(user_query, k=1)
 
     # =========================
     # CONTEXT
