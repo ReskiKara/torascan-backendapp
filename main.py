@@ -261,7 +261,7 @@ RULES:
 - Answer based on retrieval context.
 - Do not mix other artifacts.
 - Do not add unrelated information.
-- Maximum 2 paragraphs.
+- Maximum 3 paragraphs.
 - Use concise and formal language.
 """
 
@@ -291,7 +291,7 @@ ATURAN:
 - Anda boleh memperluas penjelasan secara ringan
   agar lebih informatif dan natural.
 - Gunakan bahasa Indonesia formal.
-- Jawaban maksimal 2 paragraf.
+- Jawaban maksimal 3 paragraf.
 """
 
         prompt = f"""
