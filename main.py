@@ -49,6 +49,11 @@ llm = ChatGroq(
 vector_db = None
 
 # =========================
+# EXACT CONTEXT STORAGE
+# =========================
+artifact_chunks = {}
+
+# =========================
 # VALID ARTEFACT LABELS
 # =========================
 VALID_ARTEFACTS = {
@@ -83,6 +88,7 @@ VALID_ARTEFACTS = {
 def get_vector_db():
 
     global vector_db
+    global artifact_chunks
 
     if vector_db is None:
 
@@ -120,16 +126,23 @@ def get_vector_db():
             # =========================
             chunks = []
 
-            artefact_list = list(VALID_ARTEFACTS)
+            artefact_list = sorted(
+                VALID_ARTEFACTS,
+                key=len,
+                reverse=True
+            )
 
             for artefact in artefact_list:
 
-                start_idx = full_text.lower().find(
-                    artefact.lower()
+                match = re.search(
+                    rf'\b{re.escape(artefact.lower())}\b',
+                    full_text.lower()
                 )
 
-                if start_idx == -1:
+                if not match:
                     continue
+
+                start_idx = match.start()
 
                 # Cari artefak berikutnya
                 end_idx = len(full_text)
@@ -139,13 +152,20 @@ def get_vector_db():
                     if next_artefact == artefact:
                         continue
 
-                    next_idx = full_text.lower().find(
-                        next_artefact.lower(),
-                        start_idx + 1
+                    next_match = re.search(
+                        rf'\b{re.escape(next_artefact.lower())}\b',
+                        full_text.lower()[start_idx + 1:]
                     )
 
-                    if next_idx != -1 and next_idx < end_idx:
-                        end_idx = next_idx
+                    if next_match:
+
+                        next_idx = (
+                            start_idx + 1 +
+                            next_match.start()
+                        )
+
+                        if next_idx < end_idx:
+                            end_idx = next_idx
 
                 section = full_text[start_idx:end_idx].strip()
 
@@ -153,6 +173,13 @@ def get_vector_db():
 
                     print(f"\n===== {artefact.upper()} =====")
                     print(section[:500])
+
+                    # =========================
+                    # SIMPAN EXACT CONTEXT
+                    # =========================
+                    artifact_chunks[
+                        artefact.lower()
+                    ] = section
 
                     chunks.append(
                         Document(
@@ -262,42 +289,21 @@ async def chat(query: str, artefak: str, lang: str = "id"):
 # =========================
 async def process_rag(user_query: str, artifact_name: str, lang: str):
 
-    db = get_vector_db()
+    global artifact_chunks
 
     # =========================
-    # RETRIEVAL
+    # EXACT RETRIEVAL
     # =========================
-    docs = db.similarity_search(
-        artifact_name,
-        k=10
+    context = artifact_chunks.get(
+        artifact_name.lower()
     )
 
-    # =========================
-    # FILTER BERDASARKAN METADATA
-    # =========================
-    filtered_docs = []
+    if not context:
 
-    for doc in docs:
-
-        metadata_artifact = doc.metadata.get(
-            "artifact",
-            ""
-        ).lower()
-
-        if metadata_artifact == artifact_name.lower():
-
-            filtered_docs.append(doc)
-
-    # =========================
-    # CONTEXT
-    # =========================
-    if filtered_docs:
-
-        context = filtered_docs[0].page_content
-
-    else:
-
-        context = docs[0].page_content
+        raise HTTPException(
+            status_code=404,
+            detail="Context artefak tidak ditemukan."
+        )
 
     print("\n===== RETRIEVED CONTEXT =====")
     print(context)
