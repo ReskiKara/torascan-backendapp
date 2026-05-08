@@ -125,7 +125,6 @@ def get_vector_db():
 
                 section = section.strip()
 
-                # Hindari chunk kosong
                 if len(section) > 50:
 
                     chunks.append(
@@ -181,7 +180,7 @@ def get_vector_db():
 @app.get("/get-info")
 async def get_info(artefak: str, lang: str = "id"):
 
-    db = get_vector_db()
+    get_vector_db()
 
     clean_name = artefak.lower().replace("_", " ").strip()
 
@@ -207,7 +206,7 @@ async def get_info(artefak: str, lang: str = "id"):
 @app.get("/chat")
 async def chat(query: str, artefak: str, lang: str = "id"):
 
-    db = get_vector_db()
+    get_vector_db()
 
     clean_name = artefak.lower().replace("_", " ").strip()
 
@@ -255,16 +254,13 @@ async def process_rag(user_query: str, artifact_name: str, lang: str):
     # =========================
     if lang.lower() == "en":
 
-        system_msg = f"""
+        system_msg = """
 You are a Toraja cultural information system.
 
-FOCUS ONLY ON:
-{artifact_name}
-
 RULES:
-- Answer ONLY based on retrieval context.
+- Answer based on retrieval context.
 - Do not mix other artifacts.
-- Do not add outside information.
+- Do not add unrelated information.
 - Maximum 2 paragraphs.
 - Use concise and formal language.
 """
@@ -276,10 +272,11 @@ Context:
 Artifact:
 {artifact_name}
 
-Question:
+User Question:
 {user_query}
 
-Explain the artifact in maximum 2 paragraphs.
+TASK:
+Answer the user question based on the context above.
 """
 
     else:
@@ -296,7 +293,8 @@ ATURAN:
 - Gunakan bahasa Indonesia formal.
 - Jawaban maksimal 2 paragraf.
 """
-       prompt = f"""
+
+        prompt = f"""
 Konteks:
 {context}
 
