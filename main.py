@@ -76,8 +76,8 @@ def get_vector_db():
             # CHUNKING
             # =========================
             text_splitter = RecursiveCharacterTextSplitter(
-                chunk_size=800,
-                chunk_overlap=100
+                chunk_size=300,
+                chunk_overlap=80
             )
 
             chunks = text_splitter.split_documents(data)
@@ -195,10 +195,19 @@ Answer in professional English.
 
     else:
 
-        system_msg = (
-            "Anda adalah ahli budaya Toraja. "
-            "Jawab hanya berdasarkan konteks yang diberikan."
-        )
+       system_msg = """
+Anda adalah sistem informasi artefak budaya Toraja.
+
+ATURAN:
+- Jawab hanya berdasarkan konteks retrieval.
+- Jangan menambahkan informasi di luar konteks.
+- Jangan mencampur artefak lain.
+- Jika informasi tidak ditemukan dalam konteks,
+  jawab:
+  'Informasi tidak ditemukan dalam basis pengetahuan.'
+- Jawaban maksimal 2 paragraf.
+- Gunakan bahasa formal dan ringkas.
+"""
 
         prompt = f"""
 Konteks:
