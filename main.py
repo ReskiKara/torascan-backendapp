@@ -1,212 +1,3 @@
-import os
-from fastapi import FastAPI, HTTPException
-
-from langchain_community.document_loaders import PyPDFLoader
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
-from langchain_community.vectorstores import FAISS
-from langchain_groq import ChatGroq
-
-# =========================
-# FASTAPI
-# =========================
-app = FastAPI()
-
-# =========================
-# ENVIRONMENT VARIABLES
-# =========================
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
-GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
-
-if not GROQ_API_KEY:
-    raise Exception("GROQ_API_KEY tidak ditemukan")
-
-if not GOOGLE_API_KEY:
-    raise Exception("GOOGLE_API_KEY tidak ditemukan")
-
-# =========================
-# EMBEDDING MODEL
-# =========================
-embeddings = GoogleGenerativeAIEmbeddings(
-    model="gemini-embedding-2",
-    google_api_key=GOOGLE_API_KEY
-)
-
-# =========================
-# LLM MODEL
-# =========================
-llm = ChatGroq(
-    temperature=0.2,
-    model_name="llama-3.1-8b-instant",
-    groq_api_key=GROQ_API_KEY
-)
-
-# =========================
-# VECTOR DATABASE
-# =========================
-vector_db = None
-
-# =========================
-# VALID ARTEFACT LABELS
-# =========================
-VALID_ARTEFACTS = {
-    "kandean dulang",
-    "ullin",
-    "kurin",
-    "kalobe",
-    "irusan kararo",
-    "irusan suke",
-    "toka",
-    "dolong-dolong",
-    "pa'ti",
-    "bila",
-    "gesok-gesok",
-    "unnuran",
-    "tora-tora",
-    "kandian",
-    "dakdak",
-    "baka",
-    "bakabua",
-    "timbo",
-    "rakke",
-    "gandang",
-    "sarong",
-    "bombongan",
-    "ponto balusu"
-}
-
-# =========================
-# LOAD VECTOR DATABASE
-# =========================
-def get_vector_db():
-
-    global vector_db
-
-    if vector_db is None:
-
-        try:
-
-            pdf_path = "artefak_toraja.pdf"
-
-            print("CURRENT DIR:", os.getcwd())
-            print("FILES:", os.listdir())
-            print("PDF EXISTS:", os.path.exists(pdf_path))
-
-            if not os.path.exists(pdf_path):
-                raise Exception("File PDF tidak ditemukan")
-
-            # =========================
-            # LOAD PDF
-            # =========================
-            loader = PyPDFLoader(pdf_path)
-
-            data = loader.load()
-
-            print(f"PDF Loaded: {len(data)} pages")
-
-            # =========================
-            # CHUNKING
-            # =========================
-            text_splitter = RecursiveCharacterTextSplitter(
-                chunk_size=300,
-                chunk_overlap=50
-            )
-
-            chunks = text_splitter.split_documents(data)
-
-            print(f"Chunks Created: {len(chunks)}")
-
-            # =========================
-            # TEXT EXTRACTION
-            # =========================
-            texts = [doc.page_content for doc in chunks]
-
-            # =========================
-            # MANUAL EMBEDDING
-            # =========================
-            all_embeddings = []
-
-            for text in texts:
-
-                emb = embeddings.embed_query(text)
-
-                all_embeddings.append(emb)
-
-            print(f"Embeddings Created: {len(all_embeddings)}")
-
-            # =========================
-            # CREATE FAISS DATABASE
-            # =========================
-            vector_db = FAISS.from_embeddings(
-                text_embeddings=list(zip(texts, all_embeddings)),
-                embedding=embeddings
-            )
-
-            print("RAG System Initialized Successfully")
-
-        except Exception as e:
-
-            print(f"RAG ERROR: {e}")
-
-            raise HTTPException(
-                status_code=500,
-                detail=f"RAG ERROR: {str(e)}"
-            )
-
-    return vector_db
-
-# =========================
-# GET INFO ENDPOINT
-# =========================
-@app.get("/get-info")
-async def get_info(artefak: str, lang: str = "id"):
-
-    db = get_vector_db()
-
-    clean_name = artefak.lower().replace("_", " ").strip()
-
-    # =========================
-    # VALIDASI ARTEFAK
-    # =========================
-    if clean_name not in VALID_ARTEFACTS:
-
-        return {
-            "artifact_name": artefak,
-            "description": "Artefak tidak ditemukan dalam basis pengetahuan."
-        }
-
-    return await process_rag(
-        user_query=clean_name,
-        artifact_name=clean_name,
-        lang=lang
-    )
-
-# =========================
-# CHAT ENDPOINT
-# =========================
-@app.get("/chat")
-async def chat(query: str, artefak: str, lang: str = "id"):
-
-    db = get_vector_db()
-
-    clean_name = artefak.lower().replace("_", " ").strip()
-
-    # =========================
-    # VALIDASI ARTEFAK
-    # =========================
-    if clean_name not in VALID_ARTEFACTS:
-
-        return {
-            "artifact_name": artefak,
-            "description": "Artefak tidak ditemukan dalam basis pengetahuan."
-        }
-
-    return await process_rag(
-        user_query=query,
-        artifact_name=clean_name,
-        lang=lang
-    )
-
 # =========================
 # RAG PROCESS
 # =========================
@@ -215,20 +6,41 @@ async def process_rag(user_query: str, artifact_name: str, lang: str):
     db = get_vector_db()
 
     # =========================
-    # RETRIEVAL BERDASARKAN
-    # NAMA ARTEFAK
+    # RETRIEVAL
+    # AMBIL BEBERAPA CHUNK
     # =========================
     docs = db.similarity_search(
         artifact_name,
-        k=1
+        k=5
     )
 
     # =========================
-    # CONTEXT
+    # FILTER CHUNK RELEVAN
     # =========================
-    context = "\n".join([
-        doc.page_content for doc in docs
-    ])
+    relevant_chunks = []
+
+    for doc in docs:
+
+        # Fokus cek nama artefak
+        # di awal chunk
+        first_part = doc.page_content.lower()[:150]
+
+        if artifact_name.lower() in first_part:
+
+            relevant_chunks.append(
+                doc.page_content
+            )
+
+    # =========================
+    # FALLBACK
+    # =========================
+    if not relevant_chunks:
+
+        context = docs[0].page_content
+
+    else:
+
+        context = "\n".join(relevant_chunks)
 
     print("RETRIEVED CONTEXT:")
     print(context)
@@ -238,60 +50,70 @@ async def process_rag(user_query: str, artifact_name: str, lang: str):
     # =========================
     if lang.lower() == "en":
 
-        system_msg = """
+        system_msg = f"""
 You are a Toraja cultural information system.
 
+FOCUS ONLY ON:
+{artifact_name}
+
 RULES:
-- Answer only based on retrieval context.
-- Do not add outside information.
+- Answer ONLY based on retrieval context.
 - Do not mix other artifacts.
-- If information is unavailable,
-  answer:
-  'Information not found in knowledge base.'
+- Do not add outside information.
 - Maximum 2 paragraphs.
 - Use concise and formal language.
 """
 
         prompt = f"""
-Context:
-{context}
+ANSWER CONTRACT:
 
-Artifact:
+1. Artifact Name:
 {artifact_name}
 
-Question:
-{user_query}
+2. Use ONLY this context:
+{context}
 
-Give a concise explanation in maximum 2 paragraphs.
+TASK:
+Explain the artifact {artifact_name}.
+If the context discusses other artifacts,
+IGNORE them and use only relevant information.
+
+Answer in concise professional English.
 """
 
     else:
 
-        system_msg = """
+        system_msg = f"""
 Anda adalah sistem informasi artefak budaya Toraja.
 
+FOKUS HANYA PADA:
+{artifact_name}
+
 ATURAN:
-- Jawab hanya berdasarkan konteks retrieval.
-- Jangan menambahkan informasi di luar konteks.
+- Jawab HANYA berdasarkan context retrieval.
 - Jangan mencampur artefak lain.
-- Jika informasi tidak ditemukan dalam konteks,
-  jawab:
-  'Informasi tidak ditemukan dalam basis pengetahuan.'
+- Jangan menambahkan informasi luar.
 - Jawaban maksimal 2 paragraf.
 - Gunakan bahasa formal dan ringkas.
 """
 
         prompt = f"""
-Konteks:
-{context}
+KONTRAK JAWABAN:
 
-Artefak:
+1. Nama artefak yang harus dijelaskan:
 {artifact_name}
 
-Pertanyaan:
-{user_query}
+2. Gunakan HANYA konteks berikut:
+{context}
 
-Berikan penjelasan singkat maksimal 2 paragraf.
+TUGAS:
+Jelaskan artefak {artifact_name}.
+
+Jika konteks membahas artefak lain,
+ABAIAKAN dan gunakan hanya informasi
+yang relevan dengan {artifact_name}.
+
+Jawaban maksimal 2 paragraf.
 """
 
     try:
