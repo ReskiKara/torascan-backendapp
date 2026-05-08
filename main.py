@@ -107,25 +107,32 @@ def get_vector_db():
             print(f"PDF Loaded: {len(data)} pages")
 
             # =========================
-            # STRUCTURED CHUNKING
+            # GABUNGKAN SEMUA TEKS
             # =========================
             full_text = "\n".join([
                 doc.page_content for doc in data
             ])
 
-            # Split berdasarkan struktur artefak
+            # =========================
+            # STRUCTURED CHUNKING
+            # SPLIT BERDASARKAN NOMOR ARTEFAK
+            # =========================
             sections = re.split(
-                r'(?=\d+\.\s[A-Z\'\-\(\) ]+)',
+                r'\n\s*\d+\.\s',
                 full_text
             )
 
             chunks = []
 
-            for section in sections:
+            for i, section in enumerate(sections):
 
                 section = section.strip()
 
+                # Hindari chunk kosong
                 if len(section) > 50:
+
+                    print(f"\n===== CHUNK {i} =====")
+                    print(section[:500])
 
                     chunks.append(
                         Document(
@@ -138,7 +145,10 @@ def get_vector_db():
             # =========================
             # TEXT EXTRACTION
             # =========================
-            texts = [doc.page_content for doc in chunks]
+            texts = [
+                doc.page_content
+                for doc in chunks
+            ]
 
             # =========================
             # MANUAL EMBEDDING
@@ -246,7 +256,7 @@ async def process_rag(user_query: str, artifact_name: str, lang: str):
     # =========================
     context = docs[0].page_content
 
-    print("RETRIEVED CONTEXT:")
+    print("\n===== RETRIEVED CONTEXT =====")
     print(context)
 
     # =========================
@@ -314,7 +324,7 @@ ATURAN:
 - Anda boleh memperluas penjelasan secara ringan
   agar lebih natural dan informatif.
 - Gunakan bahasa Indonesia formal.
-- Jawaban maksimal 2 paragraf.
+- Jawaban maksimal 3 paragraf.
 """
 
     try:
