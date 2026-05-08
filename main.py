@@ -46,6 +46,38 @@ llm = ChatGroq(
 # =========================
 vector_db = None
 
+# =========================
+# VALID ARTEFACT LABELS
+# =========================
+VALID_ARTEFACTS = {
+    "kandean dulang",
+    "ullin",
+    "kurin",
+    "kalobe",
+    "irusan kararo",
+    "irusan suke",
+    "toka",
+    "dolong-dolong",
+    "pa'ti",
+    "bila",
+    "gesok-gesok",
+    "unnuran",
+    "tora-tora",
+    "kandian",
+    "dakdak",
+    "baka",
+    "bakabua",
+    "timbo",
+    "rakke",
+    "gandang",
+    "sarong",
+    "bombongan",
+    "ponto balusu"
+}
+
+# =========================
+# VECTOR DB
+# =========================
 def get_vector_db():
 
     global vector_db
@@ -131,7 +163,17 @@ async def get_info(artefak: str, lang: str = "id"):
 
     db = get_vector_db()
 
-    clean_name = artefak.replace("_", " ")
+    clean_name = artefak.lower().replace("_", " ").strip()
+
+    # =========================
+    # VALIDASI ARTEFAK
+    # =========================
+    if clean_name not in VALID_ARTEFACTS:
+
+        return {
+            "artifact_name": artefak,
+            "description": "Artefak tidak ditemukan dalam basis pengetahuan."
+        }
 
     query = clean_name
 
@@ -145,9 +187,19 @@ async def chat(query: str, artefak: str, lang: str = "id"):
 
     db = get_vector_db()
 
-    clean_name = artefak.replace("_", " ")
+    clean_name = artefak.lower().replace("_", " ").strip()
 
-    full_query = f"{clean_name} : {query}"
+    # =========================
+    # VALIDASI ARTEFAK
+    # =========================
+    if clean_name not in VALID_ARTEFACTS:
+
+        return {
+            "artifact_name": artefak,
+            "description": "Artefak tidak ditemukan dalam basis pengetahuan."
+        }
+
+    full_query = f"{clean_name}: {query}"
 
     return await process_rag(full_query, clean_name, lang)
 
