@@ -17,7 +17,7 @@ app = FastAPI()
 @app.on_event("startup")
 async def startup_event():
     get_vector_db()
-    
+
 @app.get("/")
 async def root():
     return {
@@ -62,6 +62,19 @@ vector_db = None
 # EXACT CONTEXT STORAGE
 # =========================
 artifact_chunks = {}
+
+# =========================
+# NORMALIZE LABEL
+# =========================
+def normalize_label(text):
+
+    return (
+        text.lower()
+        .replace("_", " ")
+        .replace("-", " ")
+        .replace("'", "")
+        .strip()
+    )
 
 # =========================
 # VALID ARTEFACT LABELS
@@ -132,7 +145,6 @@ def get_vector_db():
 
             # =========================
             # STRUCTURED CHUNKING
-            # BERDASARKAN NAMA ARTEFAK
             # =========================
             chunks = []
 
@@ -146,7 +158,7 @@ def get_vector_db():
 
                 match = re.search(
                     rf'\b{re.escape(artefact.lower())}\b',
-                    full_text.lower()
+                    normalize_label(full_text)
                 )
 
                 if not match:
@@ -154,7 +166,6 @@ def get_vector_db():
 
                 start_idx = match.start()
 
-                # Cari artefak berikutnya
                 end_idx = len(full_text)
 
                 for next_artefact in artefact_list:
@@ -164,7 +175,7 @@ def get_vector_db():
 
                     next_match = re.search(
                         rf'\b{re.escape(next_artefact.lower())}\b',
-                        full_text.lower()[start_idx + 1:]
+                        normalize_label(full_text)[start_idx + 1:]
                     )
 
                     if next_match:
@@ -185,7 +196,7 @@ def get_vector_db():
                     print(section[:500])
 
                     # =========================
-                    # SIMPAN EXACT CONTEXT
+                    # SIMPAN CONTEXT
                     # =========================
                     artifact_chunks[
                         artefact.lower()
@@ -256,7 +267,12 @@ async def get_info(artefak: str, lang: str = "id"):
 
     get_vector_db()
 
-    clean_name = artefak.lower().replace("_", " ").strip()
+    clean_name = normalize_label(
+        artefak
+    )
+
+    print("LABEL DARI ANDROID:", artefak)
+    print("SETELAH NORMALIZE:", clean_name)
 
     if clean_name not in VALID_ARTEFACTS:
 
@@ -279,7 +295,12 @@ async def chat(query: str, artefak: str, lang: str = "id"):
 
     get_vector_db()
 
-    clean_name = artefak.lower().replace("_", " ").strip()
+    clean_name = normalize_label(
+        artefak
+    )
+
+    print("LABEL DARI ANDROID:", artefak)
+    print("SETELAH NORMALIZE:", clean_name)
 
     if clean_name not in VALID_ARTEFACTS:
 
