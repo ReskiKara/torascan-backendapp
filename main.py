@@ -578,27 +578,33 @@ async def process_rag(
         )
         print(item["context"][:300])
 
-    # =========================
-    # PROMPT
-    # =========================
+# =========================
+# PROMPT
+# =========================
     if lang.lower() == "en":
 
-        system_msg = """
+    system_msg = """
 You are a Toraja cultural information system.
 
 RULES:
-- Answer based on the retrieved context.
+- Answer only based on the retrieved context.
 - Use the retrieved context as the main source.
+- Do not use information outside the retrieved context.
+- Do not hallucinate or invent information.
+- If the requested information is not available in the retrieved context,
+  answer:
+  "The requested information is not available in the retrieved context."
 - Re-explain the information naturally and clearly.
 - Do not copy the retrieved context word-for-word.
-- You may summarize and reorganize the information.
+- You may summarize and reorganize the information,
+  but the meaning must remain faithful to the retrieved context.
 - Do not mix unrelated artifacts.
 - Do not add information that contradicts the context.
 - Maximum 2 paragraphs.
 - Use concise and formal language.
 """
 
-        prompt = f"""
+    prompt = f"""
 Retrieved Contexts:
 {combined_context}
 
@@ -609,19 +615,28 @@ User Question:
 {user_query}
 
 TASK:
-Answer the user question based on the retrieved contexts above.
+Answer the user question only based on the retrieved contexts above.
 
-Write the answer naturally, clearly, and informatively.
-Do not copy the context directly.
+RULES:
+- Do not use information outside the retrieved context.
+- Do not hallucinate or invent information.
+- If the information is not found in the retrieved context,
+  answer:
+  "The requested information is not available in the retrieved context."
+- Explain the answer naturally,
+  clearly, and informatively.
+- Do not copy the context directly.
+- You may summarize and reorganize the sentences,
+  but the meaning must remain faithful to the retrieved context.
 """
 
-    else:
+else:
 
     system_msg = """
 Anda adalah sistem informasi artefak budaya Toraja.
 
 ATURAN:
-- Jawaban harus berdasarkan konteks retrieval.
+- Jawaban harus hanya berdasarkan konteks retrieval.
 - Gunakan informasi pada context retrieval sebagai sumber utama.
 - Jangan menggunakan informasi di luar context retrieval.
 - Jangan mengarang jawaban.
@@ -638,7 +653,7 @@ ATURAN:
 - Jawaban maksimal 2 paragraf.
 """
 
-       prompt = f"""
+    prompt = f"""
 Konteks Retrieval:
 {combined_context}
 
