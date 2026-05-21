@@ -5,6 +5,7 @@ from fastapi import FastAPI, HTTPException
 
 from langchain_core.documents import Document
 from langchain_community.document_loaders import PyPDFLoader
+from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain_groq import ChatGroq
@@ -59,12 +60,7 @@ llm = ChatGroq(
 vector_db = None
 
 # =========================
-# EXACT CONTEXT STORAGE
-# =========================
-artifact_chunks = {}
-
-# =========================
-# NORMALIZE LABEL
+# NORMALIZATION
 # =========================
 def normalize_for_search(text: str) -> str:
     return (
@@ -122,7 +118,7 @@ VALID_ARTEFACTS = {
 }
 
 # =========================
-# HELPER: PAGE & PARAGRAPH
+# HELPER PAGE & PARAGRAPH
 # =========================
 def find_page_number(raw_index, page_mapping):
     for mapping in page_mapping:
@@ -162,7 +158,6 @@ def find_paragraph_number(raw_index, page_mapping, full_text):
 def get_vector_db():
 
     global vector_db
-    global artifact_chunks
 
     if vector_db is None:
 
@@ -177,17 +172,13 @@ def get_vector_db():
             if not os.path.exists(pdf_path):
                 raise Exception("File PDF tidak ditemukan")
 
-            # =========================
-            # LOAD PDF
-            # =========================
             loader = PyPDFLoader(pdf_path)
-
             data = loader.load()
 
             print(f"PDF Loaded: {len(data)} pages")
 
             # =========================
-            # GABUNGKAN TEKS PDF + PAGE MAPPING
+            # GABUNGKAN TEKS + MAPPING HALAMAN
             # =========================
             full_text = ""
             page_mapping = []
@@ -198,9 +189,7 @@ def get_vector_db():
                 page_text = doc.page_content
 
                 start_pos = len(full_text)
-
                 full_text += page_text
-
                 end_pos = len(full_text)
 
                 page_mapping.append({
@@ -216,8 +205,20 @@ def get_vector_db():
             )
 
             # =========================
-            # STRUCTURED CHUNKING
+            # SPLITTER RECURSIVE
             # =========================
+            splitter = RecursiveCharacterTextSplitter(
+                chunk_size=500,
+                chunk_overlap=100,
+                separators=[
+                    "\n\n",
+                    "\n",
+                    ". ",
+                    " ",
+                    ""
+                ]
+            )
+
             chunks = []
 
             artefact_list = sorted(
@@ -226,6 +227,10 @@ def get_vector_db():
                 reverse=True
             )
 
+            # =========================
+            # AMBIL SECTION PER ARTEFAK
+            # LALU DIPECAH LAGI SECARA RECURSIVE
+            # =========================
             for artefact in artefact_list:
 
                 pattern = build_label_pattern(
@@ -242,12 +247,9 @@ def get_vector_db():
                     continue
 
                 start_idx = match.start()
-
                 end_idx = len(full_text)
 
-                # =========================
-                # CARI ARTEFAK BERIKUTNYA
-                # =========================
+                # Cari batas artefak berikutnya
                 for next_artefact in artefact_list:
 
                     if next_artefact == artefact:
@@ -278,59 +280,74 @@ def get_vector_db():
                     start_idx:end_idx
                 ].strip()
 
-                if len(section) > 50:
+                if len(section) <= 50:
+                    continue
+
+                sub_chunks = splitter.split_text(
+                    section
+                )
+
+                search_start = start_idx
+
+                for idx, sub_chunk in enumerate(sub_chunks):
+
+                    sub_chunk_clean = sub_chunk.strip()
+
+                    if len(sub_chunk_clean) <= 30:
+                        continue
+
+                    global_idx = full_text.find(
+                        sub_chunk_clean[:80],
+                        search_start
+                    )
+
+                    if global_idx == -1:
+                        global_idx = start_idx
 
                     page_number = find_page_number(
-                        start_idx,
+                        global_idx,
                         page_mapping
                     )
 
                     paragraph_number = find_paragraph_number(
-                        start_idx,
+                        global_idx,
                         page_mapping,
                         full_text
                     )
 
-                    print(f"\n===== {artefact.upper()} =====")
-                    print(f"PAGE: {page_number}")
-                    print(f"PARAGRAPH: {paragraph_number}")
-                    print(section[:500])
-
-                    # =========================
-                    # SIMPAN CONTEXT + SOURCE
-                    # =========================
-                    artifact_chunks[
-                        artefact.lower()
-                    ] = {
-                        "context": section,
+                    metadata = {
+                        "artifact": artefact.lower(),
                         "page": page_number,
-                        "paragraph": paragraph_number
+                        "paragraph": paragraph_number,
+                        "chunk_index": idx + 1
                     }
 
                     chunks.append(
                         Document(
-                            page_content=section,
-                            metadata={
-                                "artifact": artefact.lower(),
-                                "page": page_number,
-                                "paragraph": paragraph_number
-                            }
+                            page_content=sub_chunk_clean,
+                            metadata=metadata
                         )
                     )
 
-            print(f"Artefact Chunks Created: {len(chunks)}")
+                    search_start = global_idx + len(
+                        sub_chunk_clean
+                    )
 
-            # =========================
-            # TEXT EXTRACTION
-            # =========================
+                    print(f"\n===== {artefact.upper()} | CHUNK {idx + 1} =====")
+                    print(f"PAGE: {page_number}")
+                    print(f"PARAGRAPH: {paragraph_number}")
+                    print(sub_chunk_clean[:300])
+
+            print(f"Chunks Created: {len(chunks)}")
+
+            if not chunks:
+                raise Exception("Tidak ada chunk yang berhasil dibuat")
+
             texts = [
                 doc.page_content
                 for doc in chunks
             ]
 
-            # =========================
-            # MANUAL EMBEDDING
-            # =========================
             all_embeddings = []
 
             for text in texts:
@@ -345,9 +362,6 @@ def get_vector_db():
 
             print(f"Embeddings Created: {len(all_embeddings)}")
 
-            # =========================
-            # CREATE FAISS DATABASE
-            # =========================
             vector_db = FAISS.from_embeddings(
                 text_embeddings=list(zip(
                     texts,
@@ -360,7 +374,7 @@ def get_vector_db():
                 ]
             )
 
-            print("RAG System Initialized Successfully")
+            print("RAG Semantic Retrieval Initialized Successfully")
 
         except Exception as e:
 
@@ -379,7 +393,8 @@ def get_vector_db():
 @app.get("/get-info")
 async def get_info(
     artefak: str,
-    lang: str = "id"
+    lang: str = "id",
+    k: int = 3
 ):
 
     get_vector_db()
@@ -396,6 +411,8 @@ async def get_info(
         return {
             "artifact_name": artefak,
             "query": clean_name,
+            "top_k": k,
+            "retrieved_contexts": [],
             "retrieved_context": "",
             "page": None,
             "paragraph": None,
@@ -403,9 +420,10 @@ async def get_info(
         }
 
     return await process_rag(
-        user_query=clean_name,
+        user_query=f"Apa itu {clean_name}?",
         artifact_name=clean_name,
-        lang=lang
+        lang=lang,
+        top_k=k
     )
 
 # =========================
@@ -415,7 +433,8 @@ async def get_info(
 async def chat(
     query: str,
     artefak: str,
-    lang: str = "id"
+    lang: str = "id",
+    k: int = 3
 ):
 
     get_vector_db()
@@ -432,6 +451,8 @@ async def chat(
         return {
             "artifact_name": artefak,
             "query": query,
+            "top_k": k,
+            "retrieved_contexts": [],
             "retrieved_context": "",
             "page": None,
             "paragraph": None,
@@ -441,7 +462,8 @@ async def chat(
     return await process_rag(
         user_query=query,
         artifact_name=clean_name,
-        lang=lang
+        lang=lang,
+        top_k=k
     )
 
 # =========================
@@ -450,33 +472,100 @@ async def chat(
 async def process_rag(
     user_query: str,
     artifact_name: str,
-    lang: str
+    lang: str,
+    top_k: int = 3
 ):
 
-    global artifact_chunks
+    db = get_vector_db()
 
     # =========================
-    # EXACT RETRIEVAL
+    # SEMANTIC RETRIEVAL QUERY
     # =========================
-    retrieved_data = artifact_chunks.get(
-        artifact_name.lower()
+    retrieval_query = f"{artifact_name} {user_query}"
+
+    search_k = max(
+        top_k * 4,
+        10
     )
 
-    if not retrieved_data:
+    docs_with_scores = db.similarity_search_with_score(
+        retrieval_query,
+        k=search_k
+    )
+
+    # =========================
+    # FILTER BERDASARKAN ARTEFAK
+    # =========================
+    filtered_docs = []
+
+    for doc, score in docs_with_scores:
+
+        metadata_artifact = doc.metadata.get(
+            "artifact",
+            ""
+        ).lower()
+
+        if metadata_artifact == artifact_name.lower():
+
+            filtered_docs.append(
+                (doc, score)
+            )
+
+        if len(filtered_docs) >= top_k:
+            break
+
+    # Jika hasil filter kosong, fallback ke hasil similarity global
+    if not filtered_docs:
+
+        filtered_docs = docs_with_scores[
+            :top_k
+        ]
+
+    retrieved_contexts = []
+
+    for rank, (doc, score) in enumerate(
+        filtered_docs,
+        start=1
+    ):
+
+        retrieved_contexts.append({
+            "rank": rank,
+            "context": doc.page_content,
+            "page": doc.metadata.get("page"),
+            "paragraph": doc.metadata.get("paragraph"),
+            "chunk_index": doc.metadata.get("chunk_index"),
+            "similarity_score": float(score)
+        })
+
+    combined_context = "\n\n".join([
+        f"[Context {item['rank']} | "
+        f"Halaman {item['page']} | "
+        f"Paragraf {item['paragraph']} | "
+        f"Chunk {item['chunk_index']}]\n"
+        f"{item['context']}"
+        for item in retrieved_contexts
+    ])
+
+    if not combined_context:
 
         raise HTTPException(
             status_code=404,
-            detail="Context artefak tidak ditemukan."
+            detail="Context retrieval tidak ditemukan."
         )
 
-    context = retrieved_data["context"]
-    page_number = retrieved_data["page"]
-    paragraph_number = retrieved_data["paragraph"]
+    print("\n===== SEMANTIC RETRIEVAL RESULT =====")
+    print(f"QUERY: {retrieval_query}")
+    print(f"TOP K: {top_k}")
 
-    print("\n===== RETRIEVED CONTEXT =====")
-    print(f"PAGE: {page_number}")
-    print(f"PARAGRAPH: {paragraph_number}")
-    print(context)
+    for item in retrieved_contexts:
+        print(
+            f"Rank {item['rank']} | "
+            f"Page {item['page']} | "
+            f"Paragraph {item['paragraph']} | "
+            f"Chunk {item['chunk_index']} | "
+            f"Score {item['similarity_score']}"
+        )
+        print(item["context"][:300])
 
     # =========================
     # PROMPT
@@ -488,15 +577,16 @@ You are a Toraja cultural information system.
 
 RULES:
 - Answer based on retrieval context.
-- Do not mix other artifacts.
-- Do not add unrelated information.
+- Use only relevant information from the provided contexts.
+- Do not mix unrelated artifacts.
+- Do not add information that contradicts the context.
 - Maximum 2 paragraphs.
 - Use concise and formal language.
 """
 
         prompt = f"""
-Context:
-{context}
+Retrieved Contexts:
+{combined_context}
 
 Artifact:
 {artifact_name}
@@ -505,7 +595,7 @@ User Question:
 {user_query}
 
 TASK:
-Answer the user question based on the context above.
+Answer the user question based on the retrieved contexts above.
 """
 
     else:
@@ -515,17 +605,16 @@ Anda adalah sistem informasi artefak budaya Toraja.
 
 ATURAN:
 - Jawaban harus berdasarkan konteks retrieval.
-- Jangan mencampur artefak lain.
+- Gunakan hanya informasi yang relevan dari context yang diberikan.
+- Jangan mencampur artefak lain yang tidak relevan.
 - Jangan membuat informasi yang bertentangan dengan konteks.
-- Anda boleh memperluas penjelasan secara ringan
-  agar lebih informatif dan natural.
 - Gunakan bahasa Indonesia formal.
 - Jawaban maksimal 2 paragraf.
 """
 
         prompt = f"""
-Konteks:
-{context}
+Konteks Retrieval:
+{combined_context}
 
 Artefak:
 {artifact_name}
@@ -534,14 +623,12 @@ Pertanyaan Pengguna:
 {user_query}
 
 TUGAS:
-Jawab pertanyaan pengguna berdasarkan konteks di atas.
+Jawab pertanyaan pengguna berdasarkan konteks retrieval di atas.
 
 ATURAN:
 - Jawaban harus sesuai konteks retrieval.
-- Jangan mencampur artefak lain.
+- Jangan mencampur artefak lain yang tidak relevan.
 - Jangan membuat informasi yang bertentangan dengan konteks.
-- Anda boleh memperluas penjelasan secara ringan
-  agar lebih natural dan informatif.
 - Gunakan bahasa Indonesia formal.
 - Jawaban maksimal 2 paragraf.
 """
@@ -559,24 +646,22 @@ ATURAN:
             }
         ])
 
+        first_context = retrieved_contexts[0]
+
         return {
             "artifact_name": artifact_name,
             "query": user_query,
+            "top_k": top_k,
 
-            # =========================
-            # CONTEXT RETRIEVAL
-            # =========================
-            "retrieved_context": context,
+            # Untuk UI lama
+            "retrieved_context": first_context["context"],
+            "page": first_context["page"],
+            "paragraph": first_context["paragraph"],
 
-            # =========================
-            # SOURCE INFO
-            # =========================
-            "page": page_number,
-            "paragraph": paragraph_number,
+            # Untuk UI baru top-k
+            "retrieved_contexts": retrieved_contexts,
 
-            # =========================
-            # LLM ANSWER
-            # =========================
+            # Jawaban LLM
             "description": response.content
         }
 
