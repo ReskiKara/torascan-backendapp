@@ -617,22 +617,28 @@ Do not copy the context directly.
 
     else:
 
-        system_msg = """
+    system_msg = """
 Anda adalah sistem informasi artefak budaya Toraja.
 
 ATURAN:
 - Jawaban harus berdasarkan konteks retrieval.
-- Gunakan informasi pada context sebagai sumber utama.
+- Gunakan informasi pada context retrieval sebagai sumber utama.
+- Jangan menggunakan informasi di luar context retrieval.
+- Jangan mengarang jawaban.
+- Jika informasi yang ditanyakan tidak ditemukan pada context retrieval,
+  jawab:
+  "Informasi tersebut tidak ditemukan pada konteks retrieval yang tersedia."
 - Jelaskan kembali informasi dengan bahasa yang natural dan informatif.
 - Jangan menyalin context secara mentah.
-- Anda boleh merangkum dan menyusun ulang kalimat.
+- Anda boleh merangkum dan menyusun ulang kalimat,
+  tetapi makna harus tetap sesuai dengan context retrieval.
 - Jangan mencampur artefak lain yang tidak relevan.
-- Jangan membuat informasi yang bertentangan dengan konteks.
+- Jangan membuat informasi yang bertentangan dengan context retrieval.
 - Gunakan bahasa Indonesia formal dan mudah dipahami.
 - Jawaban maksimal 2 paragraf.
 """
 
-        prompt = f"""
+       prompt = f"""
 Konteks Retrieval:
 {combined_context}
 
@@ -643,14 +649,19 @@ Pertanyaan Pengguna:
 {user_query}
 
 TUGAS:
-Jawab pertanyaan pengguna berdasarkan konteks retrieval di atas.
+Jawab pertanyaan pengguna hanya berdasarkan konteks retrieval di atas.
 
-Buat jawaban yang:
-- natural,
-- informatif,
-- mudah dipahami,
-- tidak menyalin context secara langsung,
-- tetap sesuai dengan informasi pada context.
+ATURAN:
+- Jangan menggunakan informasi di luar konteks retrieval.
+- Jangan mengarang jawaban.
+- Jika informasi tidak ditemukan pada konteks retrieval,
+  jawab:
+  "Informasi tersebut tidak ditemukan pada konteks retrieval yang tersedia."
+- Jelaskan jawaban dengan bahasa yang natural,
+  informatif, dan mudah dipahami.
+- Jangan menyalin context secara mentah.
+- Anda boleh merangkum dan menyusun ulang kalimat,
+  tetapi makna harus tetap sesuai dengan context retrieval.
 """
 
     try:
