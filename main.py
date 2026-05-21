@@ -834,35 +834,22 @@ ATURAN:
         first_context = retrieved_contexts[0]
 
         return {
-
             "artifact_name": artifact_name,
-
             "query": user_query,
-
             "top_k": top_k,
-
-            # Context utama
-            "retrieved_context": (
-                first_context["context"]
-            ),
-
-            "page": (
-                first_context["page"]
-            ),
-
-            "paragraph": (
-                first_context["paragraph"]
-            ),
-
+        
+            # Context utama untuk UI Android
+            "retrieved_context": first_context["context"],
+            "page": first_context["page"],
+            "paragraph": first_context["paragraph"],
+            "chunk_index": first_context["chunk_index"],
+            "similarity_score": first_context["similarity_score"],
+        
             # Semua retrieval
-            "retrieved_contexts": (
-                retrieved_contexts
-            ),
-
+            "retrieved_contexts": retrieved_contexts,
+        
             # Jawaban LLM
-            "description": (
-                response.content
-            )
+            "description": response.content
         }
 
     except Exception as e:
