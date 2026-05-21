@@ -66,14 +66,30 @@ artifact_chunks = {}
 # =========================
 # NORMALIZE LABEL
 # =========================
-def normalize_label(text):
-
+def normalize_for_search(text: str) -> str:
     return (
         text.lower()
         .replace("_", " ")
         .replace("-", " ")
-        .replace("'", "")
-        .strip()
+        .replace("'", " ")
+        .replace("’", " ")
+    )
+
+def normalize_label(text: str) -> str:
+    return " ".join(
+        normalize_for_search(text).split()
+    )
+
+def build_label_pattern(label: str) -> str:
+    words = normalize_label(label).split()
+
+    return (
+        r"(?<!\w)"
+        + r"\s+".join([
+            re.escape(word)
+            for word in words
+        ])
+        + r"(?!\w)"
     )
 
 # =========================
@@ -106,6 +122,41 @@ VALID_ARTEFACTS = {
 }
 
 # =========================
+# HELPER: PAGE & PARAGRAPH
+# =========================
+def find_page_number(raw_index, page_mapping):
+    for mapping in page_mapping:
+        if mapping["start"] <= raw_index <= mapping["end"]:
+            return mapping["page"]
+
+    return 1
+
+def find_paragraph_number(raw_index, page_mapping, full_text):
+    selected_mapping = None
+
+    for mapping in page_mapping:
+        if mapping["start"] <= raw_index <= mapping["end"]:
+            selected_mapping = mapping
+            break
+
+    if not selected_mapping:
+        return 1
+
+    page_start = selected_mapping["start"]
+
+    text_before = full_text[
+        page_start:raw_index
+    ]
+
+    paragraphs = [
+        p.strip()
+        for p in re.split(r"\n\s*\n", text_before)
+        if p.strip()
+    ]
+
+    return len(paragraphs) + 1
+
+# =========================
 # LOAD VECTOR DATABASE
 # =========================
 def get_vector_db():
@@ -136,12 +187,33 @@ def get_vector_db():
             print(f"PDF Loaded: {len(data)} pages")
 
             # =========================
-            # GABUNGKAN TEKS PDF
+            # GABUNGKAN TEKS PDF + PAGE MAPPING
             # =========================
-            full_text = "\n".join([
-                doc.page_content
-                for doc in data
-            ])
+            full_text = ""
+            page_mapping = []
+
+            for i, doc in enumerate(data):
+
+                page_number = i + 1
+                page_text = doc.page_content
+
+                start_pos = len(full_text)
+
+                full_text += page_text
+
+                end_pos = len(full_text)
+
+                page_mapping.append({
+                    "start": start_pos,
+                    "end": end_pos,
+                    "page": page_number
+                })
+
+                full_text += "\n\n"
+
+            normalized_full_text = normalize_for_search(
+                full_text
+            )
 
             # =========================
             # STRUCTURED CHUNKING
@@ -156,26 +228,40 @@ def get_vector_db():
 
             for artefact in artefact_list:
 
+                pattern = build_label_pattern(
+                    artefact
+                )
+
                 match = re.search(
-                    rf'\b{re.escape(artefact.lower())}\b',
-                    normalize_label(full_text)
+                    pattern,
+                    normalized_full_text
                 )
 
                 if not match:
+                    print(f"TIDAK DITEMUKAN: {artefact}")
                     continue
 
                 start_idx = match.start()
 
                 end_idx = len(full_text)
 
+                # =========================
+                # CARI ARTEFAK BERIKUTNYA
+                # =========================
                 for next_artefact in artefact_list:
 
                     if next_artefact == artefact:
                         continue
 
+                    next_pattern = build_label_pattern(
+                        next_artefact
+                    )
+
                     next_match = re.search(
-                        rf'\b{re.escape(next_artefact.lower())}\b',
-                        normalize_label(full_text)[start_idx + 1:]
+                        next_pattern,
+                        normalized_full_text[
+                            start_idx + 1:
+                        ]
                     )
 
                     if next_match:
@@ -188,25 +274,46 @@ def get_vector_db():
                         if next_idx < end_idx:
                             end_idx = next_idx
 
-                section = full_text[start_idx:end_idx].strip()
+                section = full_text[
+                    start_idx:end_idx
+                ].strip()
 
                 if len(section) > 50:
 
+                    page_number = find_page_number(
+                        start_idx,
+                        page_mapping
+                    )
+
+                    paragraph_number = find_paragraph_number(
+                        start_idx,
+                        page_mapping,
+                        full_text
+                    )
+
                     print(f"\n===== {artefact.upper()} =====")
+                    print(f"PAGE: {page_number}")
+                    print(f"PARAGRAPH: {paragraph_number}")
                     print(section[:500])
 
                     # =========================
-                    # SIMPAN CONTEXT
+                    # SIMPAN CONTEXT + SOURCE
                     # =========================
                     artifact_chunks[
                         artefact.lower()
-                    ] = section
+                    ] = {
+                        "context": section,
+                        "page": page_number,
+                        "paragraph": paragraph_number
+                    }
 
                     chunks.append(
                         Document(
                             page_content=section,
                             metadata={
-                                "artifact": artefact.lower()
+                                "artifact": artefact.lower(),
+                                "page": page_number,
+                                "paragraph": paragraph_number
                             }
                         )
                     )
@@ -228,9 +335,13 @@ def get_vector_db():
 
             for text in texts:
 
-                emb = embeddings.embed_query(text)
+                emb = embeddings.embed_query(
+                    text
+                )
 
-                all_embeddings.append(emb)
+                all_embeddings.append(
+                    emb
+                )
 
             print(f"Embeddings Created: {len(all_embeddings)}")
 
@@ -238,7 +349,10 @@ def get_vector_db():
             # CREATE FAISS DATABASE
             # =========================
             vector_db = FAISS.from_embeddings(
-                text_embeddings=list(zip(texts, all_embeddings)),
+                text_embeddings=list(zip(
+                    texts,
+                    all_embeddings
+                )),
                 embedding=embeddings,
                 metadatas=[
                     doc.metadata
@@ -263,7 +377,10 @@ def get_vector_db():
 # GET INFO ENDPOINT
 # =========================
 @app.get("/get-info")
-async def get_info(artefak: str, lang: str = "id"):
+async def get_info(
+    artefak: str,
+    lang: str = "id"
+):
 
     get_vector_db()
 
@@ -278,6 +395,10 @@ async def get_info(artefak: str, lang: str = "id"):
 
         return {
             "artifact_name": artefak,
+            "query": clean_name,
+            "retrieved_context": "",
+            "page": None,
+            "paragraph": None,
             "description": "Artefak tidak ditemukan dalam basis pengetahuan."
         }
 
@@ -291,7 +412,11 @@ async def get_info(artefak: str, lang: str = "id"):
 # CHAT ENDPOINT
 # =========================
 @app.get("/chat")
-async def chat(query: str, artefak: str, lang: str = "id"):
+async def chat(
+    query: str,
+    artefak: str,
+    lang: str = "id"
+):
 
     get_vector_db()
 
@@ -306,6 +431,10 @@ async def chat(query: str, artefak: str, lang: str = "id"):
 
         return {
             "artifact_name": artefak,
+            "query": query,
+            "retrieved_context": "",
+            "page": None,
+            "paragraph": None,
             "description": "Artefak tidak ditemukan dalam basis pengetahuan."
         }
 
@@ -318,25 +447,35 @@ async def chat(query: str, artefak: str, lang: str = "id"):
 # =========================
 # RAG PROCESS
 # =========================
-async def process_rag(user_query: str, artifact_name: str, lang: str):
+async def process_rag(
+    user_query: str,
+    artifact_name: str,
+    lang: str
+):
 
     global artifact_chunks
 
     # =========================
     # EXACT RETRIEVAL
     # =========================
-    context = artifact_chunks.get(
+    retrieved_data = artifact_chunks.get(
         artifact_name.lower()
     )
 
-    if not context:
+    if not retrieved_data:
 
         raise HTTPException(
             status_code=404,
             detail="Context artefak tidak ditemukan."
         )
 
+    context = retrieved_data["context"]
+    page_number = retrieved_data["page"]
+    paragraph_number = retrieved_data["paragraph"]
+
     print("\n===== RETRIEVED CONTEXT =====")
+    print(f"PAGE: {page_number}")
+    print(f"PARAGRAPH: {paragraph_number}")
     print(context)
 
     # =========================
@@ -423,6 +562,21 @@ ATURAN:
         return {
             "artifact_name": artifact_name,
             "query": user_query,
+
+            # =========================
+            # CONTEXT RETRIEVAL
+            # =========================
+            "retrieved_context": context,
+
+            # =========================
+            # SOURCE INFO
+            # =========================
+            "page": page_number,
+            "paragraph": paragraph_number,
+
+            # =========================
+            # LLM ANSWER
+            # =========================
             "description": response.content
         }
 
