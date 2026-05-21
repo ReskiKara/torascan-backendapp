@@ -110,7 +110,7 @@ VALID_ARTEFACTS = {
     "irusan suke",
     "toka",
     "dolong dolong",
-    "pati",
+    "pa ti",
     "bila",
     "gesok gesok",
     "unnuran",
