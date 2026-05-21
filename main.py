@@ -15,15 +15,18 @@ from langchain_groq import ChatGroq
 # =========================
 app = FastAPI()
 
+
 @app.on_event("startup")
 async def startup_event():
     get_vector_db()
+
 
 @app.get("/")
 async def root():
     return {
         "message": "Toraja RAG API Running"
     }
+
 
 # =========================
 # ENVIRONMENT VARIABLES
@@ -37,6 +40,7 @@ if not GROQ_API_KEY:
 if not GOOGLE_API_KEY:
     raise Exception("GOOGLE_API_KEY tidak ditemukan")
 
+
 # =========================
 # EMBEDDING MODEL
 # =========================
@@ -45,19 +49,22 @@ embeddings = GoogleGenerativeAIEmbeddings(
     google_api_key=GOOGLE_API_KEY
 )
 
+
 # =========================
 # LLM MODEL
 # =========================
 llm = ChatGroq(
-    temperature=0.2,
+    temperature=0.3,
     model_name="llama-3.1-8b-instant",
     groq_api_key=GROQ_API_KEY
 )
+
 
 # =========================
 # VECTOR DATABASE
 # =========================
 vector_db = None
+
 
 # =========================
 # NORMALIZATION
@@ -71,10 +78,12 @@ def normalize_for_search(text: str) -> str:
         .replace("’", " ")
     )
 
+
 def normalize_label(text: str) -> str:
     return " ".join(
         normalize_for_search(text).split()
     )
+
 
 def build_label_pattern(label: str) -> str:
     words = normalize_label(label).split()
@@ -87,6 +96,7 @@ def build_label_pattern(label: str) -> str:
         ])
         + r"(?!\w)"
     )
+
 
 # =========================
 # VALID ARTEFACT LABELS
@@ -117,6 +127,7 @@ VALID_ARTEFACTS = {
     "ponto balusu"
 }
 
+
 # =========================
 # HELPER PAGE & PARAGRAPH
 # =========================
@@ -126,6 +137,7 @@ def find_page_number(raw_index, page_mapping):
             return mapping["page"]
 
     return 1
+
 
 def find_paragraph_number(raw_index, page_mapping, full_text):
     selected_mapping = None
@@ -152,17 +164,16 @@ def find_paragraph_number(raw_index, page_mapping, full_text):
 
     return len(paragraphs) + 1
 
+
 # =========================
 # LOAD VECTOR DATABASE
 # =========================
 def get_vector_db():
-
     global vector_db
 
     if vector_db is None:
 
         try:
-
             pdf_path = "artefak_toraja.pdf"
 
             print("CURRENT DIR:", os.getcwd())
@@ -184,7 +195,6 @@ def get_vector_db():
             page_mapping = []
 
             for i, doc in enumerate(data):
-
                 page_number = i + 1
                 page_text = doc.page_content
 
@@ -205,7 +215,7 @@ def get_vector_db():
             )
 
             # =========================
-            # SPLITTER RECURSIVE
+            # RECURSIVE CHUNKING
             # =========================
             splitter = RecursiveCharacterTextSplitter(
                 chunk_size=500,
@@ -229,7 +239,7 @@ def get_vector_db():
 
             # =========================
             # AMBIL SECTION PER ARTEFAK
-            # LALU DIPECAH LAGI SECARA RECURSIVE
+            # LALU DIPECAH SECARA RECURSIVE
             # =========================
             for artefact in artefact_list:
 
@@ -267,7 +277,6 @@ def get_vector_db():
                     )
 
                     if next_match:
-
                         next_idx = (
                             start_idx + 1 +
                             next_match.start()
@@ -351,7 +360,6 @@ def get_vector_db():
             all_embeddings = []
 
             for text in texts:
-
                 emb = embeddings.embed_query(
                     text
                 )
@@ -377,7 +385,6 @@ def get_vector_db():
             print("RAG Semantic Retrieval Initialized Successfully")
 
         except Exception as e:
-
             print(f"RAG ERROR: {e}")
 
             raise HTTPException(
@@ -386,6 +393,7 @@ def get_vector_db():
             )
 
     return vector_db
+
 
 # =========================
 # GET INFO ENDPOINT
@@ -407,7 +415,6 @@ async def get_info(
     print("SETELAH NORMALIZE:", clean_name)
 
     if clean_name not in VALID_ARTEFACTS:
-
         return {
             "artifact_name": artefak,
             "query": clean_name,
@@ -419,12 +426,18 @@ async def get_info(
             "description": "Artefak tidak ditemukan dalam basis pengetahuan."
         }
 
+    initial_query = (
+        f"Jelaskan artefak {clean_name}, "
+        f"fungsi, kegunaan, bahan, dan makna budayanya secara ringkas."
+    )
+
     return await process_rag(
-        user_query=f"Apa itu {clean_name}?",
+        user_query=initial_query,
         artifact_name=clean_name,
         lang=lang,
         top_k=k
     )
+
 
 # =========================
 # CHAT ENDPOINT
@@ -447,7 +460,6 @@ async def chat(
     print("SETELAH NORMALIZE:", clean_name)
 
     if clean_name not in VALID_ARTEFACTS:
-
         return {
             "artifact_name": artefak,
             "query": query,
@@ -465,6 +477,7 @@ async def chat(
         lang=lang,
         top_k=k
     )
+
 
 # =========================
 # RAG PROCESS
@@ -514,9 +527,8 @@ async def process_rag(
         if len(filtered_docs) >= top_k:
             break
 
-    # Jika hasil filter kosong, fallback ke hasil similarity global
+    # fallback jika filter kosong
     if not filtered_docs:
-
         filtered_docs = docs_with_scores[
             :top_k
         ]
@@ -547,7 +559,6 @@ async def process_rag(
     ])
 
     if not combined_context:
-
         raise HTTPException(
             status_code=404,
             detail="Context retrieval tidak ditemukan."
@@ -576,8 +587,11 @@ async def process_rag(
 You are a Toraja cultural information system.
 
 RULES:
-- Answer based on retrieval context.
-- Use only relevant information from the provided contexts.
+- Answer based on the retrieved context.
+- Use the retrieved context as the main source.
+- Re-explain the information naturally and clearly.
+- Do not copy the retrieved context word-for-word.
+- You may summarize and reorganize the information.
 - Do not mix unrelated artifacts.
 - Do not add information that contradicts the context.
 - Maximum 2 paragraphs.
@@ -596,6 +610,9 @@ User Question:
 
 TASK:
 Answer the user question based on the retrieved contexts above.
+
+Write the answer naturally, clearly, and informatively.
+Do not copy the context directly.
 """
 
     else:
@@ -605,10 +622,13 @@ Anda adalah sistem informasi artefak budaya Toraja.
 
 ATURAN:
 - Jawaban harus berdasarkan konteks retrieval.
-- Gunakan hanya informasi yang relevan dari context yang diberikan.
+- Gunakan informasi pada context sebagai sumber utama.
+- Jelaskan kembali informasi dengan bahasa yang natural dan informatif.
+- Jangan menyalin context secara mentah.
+- Anda boleh merangkum dan menyusun ulang kalimat.
 - Jangan mencampur artefak lain yang tidak relevan.
 - Jangan membuat informasi yang bertentangan dengan konteks.
-- Gunakan bahasa Indonesia formal.
+- Gunakan bahasa Indonesia formal dan mudah dipahami.
 - Jawaban maksimal 2 paragraf.
 """
 
@@ -625,16 +645,15 @@ Pertanyaan Pengguna:
 TUGAS:
 Jawab pertanyaan pengguna berdasarkan konteks retrieval di atas.
 
-ATURAN:
-- Jawaban harus sesuai konteks retrieval.
-- Jangan mencampur artefak lain yang tidak relevan.
-- Jangan membuat informasi yang bertentangan dengan konteks.
-- Gunakan bahasa Indonesia formal.
-- Jawaban maksimal 2 paragraf.
+Buat jawaban yang:
+- natural,
+- informatif,
+- mudah dipahami,
+- tidak menyalin context secara langsung,
+- tetap sesuai dengan informasi pada context.
 """
 
     try:
-
         response = llm.invoke([
             {
                 "role": "system",
@@ -653,20 +672,19 @@ ATURAN:
             "query": user_query,
             "top_k": top_k,
 
-            # Untuk UI lama
+            # Untuk UI lama / context utama
             "retrieved_context": first_context["context"],
             "page": first_context["page"],
             "paragraph": first_context["paragraph"],
 
-            # Untuk UI baru top-k
+            # Untuk UI advanced top-k
             "retrieved_contexts": retrieved_contexts,
 
-            # Jawaban LLM
+            # Jawaban hasil LLM
             "description": response.content
         }
 
     except Exception as e:
-
         raise HTTPException(
             status_code=500,
             detail=f"LLM ERROR: {str(e)}"
