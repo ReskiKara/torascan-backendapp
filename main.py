@@ -576,9 +576,7 @@ async def process_rag(
     # =========================
     # QUERY RETRIEVAL
     # =========================
-    retrieval_query = (
-        f"{artifact_name} {user_query}"
-    )
+    retrieval_query = user_query
 
     search_k = max(
         top_k * 4,
