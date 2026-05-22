@@ -15,12 +15,6 @@ from langchain_groq import ChatGroq
 # =========================
 app = FastAPI()
 
-
-@app.on_event("startup")
-async def startup_event():
-    get_vector_db()
-
-
 @app.get("/")
 async def root():
     return {
