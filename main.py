@@ -530,7 +530,7 @@ async def debug_chunks_by_artifact(
 async def get_info(
     artefak: str,
     lang: str = "id",
-    k: int = 5
+    k: int = 3
 ):
 
     get_vector_db()
@@ -591,7 +591,7 @@ async def chat(
     query: str,
     artefak: str,
     lang: str = "id",
-    k: int = 5
+    k: int = 3
 ):
 
     get_vector_db()
@@ -645,7 +645,7 @@ async def process_rag(
     user_query: str,
     artifact_name: str,
     lang: str,
-    top_k: int = 5
+    top_k: int = 3
 ):
 
     db = get_vector_db()
