@@ -21,7 +21,6 @@ async def root():
         "message": "Toraja RAG API Running"
     }
 
-
 # =========================
 # ENVIRONMENT VARIABLES
 # =========================
@@ -34,6 +33,11 @@ if not GROQ_API_KEY:
 if not GOOGLE_API_KEY:
     raise Exception("GOOGLE_API_KEY tidak ditemukan")
 
+# =========================
+# CHUNK CONFIG
+# =========================
+CHUNK_SIZE = 500
+CHUNK_OVERLAP = 100
 
 # =========================
 # EMBEDDING MODEL
@@ -42,7 +46,6 @@ embeddings = GoogleGenerativeAIEmbeddings(
     model="gemini-embedding-2",
     google_api_key=GOOGLE_API_KEY
 )
-
 
 # =========================
 # LLM MODEL
@@ -53,12 +56,15 @@ llm = ChatGroq(
     groq_api_key=GROQ_API_KEY
 )
 
-
 # =========================
 # VECTOR DATABASE
 # =========================
 vector_db = None
 
+# =========================
+# CHUNK DEBUG STORAGE
+# =========================
+chunk_stats = {}
 
 # =========================
 # NORMALIZATION
@@ -72,12 +78,10 @@ def normalize_for_search(text: str) -> str:
         .replace("’", " ")
     )
 
-
 def normalize_label(text: str) -> str:
     return " ".join(
         normalize_for_search(text).split()
     )
-
 
 def build_label_pattern(label: str) -> str:
     words = normalize_label(label).split()
@@ -90,7 +94,6 @@ def build_label_pattern(label: str) -> str:
         ])
         + r"(?!\w)"
     )
-
 
 # =========================
 # VALID ARTEFACT LABELS
@@ -120,7 +123,6 @@ VALID_ARTEFACTS = {
     "bombongan",
     "ponto balusu"
 }
-
 
 # =========================
 # HELPER PAGE & PARAGRAPH
@@ -166,13 +168,13 @@ def find_paragraph_number(
 
     return len(paragraphs) + 1
 
-
 # =========================
 # LOAD VECTOR DATABASE
 # =========================
 def get_vector_db():
 
     global vector_db
+    global chunk_stats
 
     if vector_db is None:
 
@@ -232,8 +234,8 @@ def get_vector_db():
             # RECURSIVE CHUNKING
             # =========================
             splitter = RecursiveCharacterTextSplitter(
-                chunk_size=500,
-                chunk_overlap=100,
+                chunk_size=CHUNK_SIZE,
+                chunk_overlap=CHUNK_OVERLAP,
                 separators=[
                     "\n\n",
                     "\n",
@@ -316,6 +318,14 @@ def get_vector_db():
                     section
                 )
 
+                chunk_stats[artefact.lower()] = {
+                    "artifact": artefact.lower(),
+                    "chunk_size": CHUNK_SIZE,
+                    "chunk_overlap": CHUNK_OVERLAP,
+                    "total_chunks": len(sub_chunks),
+                    "chunks": []
+                }
+
                 search_start = start_idx
 
                 for idx, sub_chunk in enumerate(
@@ -350,12 +360,34 @@ def get_vector_db():
                         )
                     )
 
+                    chunk_length = len(
+                        sub_chunk_clean
+                    )
+
+                    total_chunks = len(
+                        sub_chunks
+                    )
+
                     metadata = {
                         "artifact": artefact.lower(),
                         "page": page_number,
                         "paragraph": paragraph_number,
-                        "chunk_index": idx + 1
+                        "chunk_index": idx + 1,
+                        "chunk_length": chunk_length,
+                        "total_chunks": total_chunks,
+                        "chunk_size": CHUNK_SIZE,
+                        "chunk_overlap": CHUNK_OVERLAP
                     }
+
+                    chunk_stats[
+                        artefact.lower()
+                    ]["chunks"].append({
+                        "chunk_index": idx + 1,
+                        "page": page_number,
+                        "paragraph": paragraph_number,
+                        "chunk_length": chunk_length,
+                        "content": sub_chunk_clean
+                    })
 
                     chunks.append(
                         Document(
@@ -370,7 +402,7 @@ def get_vector_db():
                     )
 
                     print(
-                        f"\n===== {artefact.upper()} | CHUNK {idx + 1} ====="
+                        f"\n===== {artefact.upper()} | CHUNK {idx + 1}/{total_chunks} ====="
                     )
 
                     print(
@@ -379,6 +411,10 @@ def get_vector_db():
 
                     print(
                         f"PARAGRAPH: {paragraph_number}"
+                    )
+
+                    print(
+                        f"CHUNK LENGTH: {chunk_length}"
                     )
 
                     print(
@@ -447,6 +483,45 @@ def get_vector_db():
 
     return vector_db
 
+# =========================
+# DEBUG ALL CHUNKS
+# =========================
+@app.get("/debug-chunks")
+async def debug_chunks():
+
+    get_vector_db()
+
+    return {
+        "chunk_size": CHUNK_SIZE,
+        "chunk_overlap": CHUNK_OVERLAP,
+        "total_artifacts": len(chunk_stats),
+        "data": chunk_stats
+    }
+
+# =========================
+# DEBUG CHUNKS BY ARTIFACT
+# =========================
+@app.get("/debug-chunks/{artefak}")
+async def debug_chunks_by_artifact(
+    artefak: str
+):
+
+    get_vector_db()
+
+    clean_name = normalize_label(
+        artefak
+    )
+
+    if clean_name not in chunk_stats:
+
+        raise HTTPException(
+            status_code=404,
+            detail="Chunk artefak tidak ditemukan."
+        )
+
+    return chunk_stats[
+        clean_name
+    ]
 
 # =========================
 # GET INFO ENDPOINT
@@ -484,6 +559,11 @@ async def get_info(
             "retrieved_context": "",
             "page": None,
             "paragraph": None,
+            "chunk_index": None,
+            "chunk_length": None,
+            "total_chunks": None,
+            "chunk_size": CHUNK_SIZE,
+            "chunk_overlap": CHUNK_OVERLAP,
             "description": (
                 "Artefak tidak ditemukan "
                 "dalam basis pengetahuan."
@@ -502,7 +582,6 @@ async def get_info(
         lang=lang,
         top_k=k
     )
-
 
 # =========================
 # CHAT ENDPOINT
@@ -541,6 +620,11 @@ async def chat(
             "retrieved_context": "",
             "page": None,
             "paragraph": None,
+            "chunk_index": None,
+            "chunk_length": None,
+            "total_chunks": None,
+            "chunk_size": CHUNK_SIZE,
+            "chunk_overlap": CHUNK_OVERLAP,
             "description": (
                 "Artefak tidak ditemukan "
                 "dalam basis pengetahuan."
@@ -553,7 +637,6 @@ async def chat(
         lang=lang,
         top_k=k
     )
-
 
 # =========================
 # RAG PROCESS
@@ -648,6 +731,22 @@ async def process_rag(
                 "chunk_index"
             ),
 
+            "chunk_length": doc.metadata.get(
+                "chunk_length"
+            ),
+
+            "total_chunks": doc.metadata.get(
+                "total_chunks"
+            ),
+
+            "chunk_size": doc.metadata.get(
+                "chunk_size"
+            ),
+
+            "chunk_overlap": doc.metadata.get(
+                "chunk_overlap"
+            ),
+
             "similarity_score": float(score)
         })
 
@@ -659,7 +758,8 @@ async def process_rag(
         f"[Context {item['rank']} | "
         f"Halaman {item['page']} | "
         f"Paragraf {item['paragraph']} | "
-        f"Chunk {item['chunk_index']}]\n"
+        f"Chunk {item['chunk_index']}/{item['total_chunks']} | "
+        f"Panjang {item['chunk_length']} karakter]\n"
         f"{item['context']}"
 
         for item in retrieved_contexts
@@ -698,7 +798,8 @@ async def process_rag(
             f"Rank {item['rank']} | "
             f"Page {item['page']} | "
             f"Paragraph {item['paragraph']} | "
-            f"Chunk {item['chunk_index']} | "
+            f"Chunk {item['chunk_index']}/{item['total_chunks']} | "
+            f"Length {item['chunk_length']} | "
             f"Score {item['similarity_score']}"
         )
 
@@ -829,17 +930,21 @@ ATURAN:
             "artifact_name": artifact_name,
             "query": user_query,
             "top_k": top_k,
-        
+
             # Context utama untuk UI Android
             "retrieved_context": first_context["context"],
             "page": first_context["page"],
             "paragraph": first_context["paragraph"],
             "chunk_index": first_context["chunk_index"],
+            "chunk_length": first_context["chunk_length"],
+            "total_chunks": first_context["total_chunks"],
+            "chunk_size": first_context["chunk_size"],
+            "chunk_overlap": first_context["chunk_overlap"],
             "similarity_score": first_context["similarity_score"],
-        
+
             # Semua retrieval
             "retrieved_contexts": retrieved_contexts,
-        
+
             # Jawaban LLM
             "description": response.content
         }
