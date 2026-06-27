@@ -36,8 +36,8 @@ if not GOOGLE_API_KEY:
 # =========================
 # CHUNK CONFIG
 # =========================
-CHUNK_SIZE = 700
-CHUNK_OVERLAP = 150
+CHUNK_SIZE = 300
+CHUNK_OVERLAP = 100
 
 # =========================
 # EMBEDDING MODEL
